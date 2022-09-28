@@ -36,7 +36,7 @@ class ZbotSpider(scrapy.Spider):
             yield scrapy.Request(response.urljoin(link), callback=self.parse_product)
 
         item_id = response.css("#uuid::text").extract_first("").strip()
-        name = response.css("h2.heading-colored::text").extract_first("").strip()
+        name = response.css(".heading-colored::text").extract_first("").strip()
         image_id_css = ".img-shadow ::attr(src)"
         image_id_pattern = r"/([\da-f-]+)\.jpg"
         image_id = response.css(image_id_css).re_first(image_id_pattern)
@@ -52,17 +52,20 @@ class ZbotSpider(scrapy.Spider):
         if phone_code:
             phone_code = phone_code.strip()[2:-2]
             phone_code = "".join(chr(ord(i) - 16) for i in phone_code)
+        else:
+            phone_code = response.css('p:contains("Telephone") span ::text').extract_first()
 
-        data = response.css("#item-data-json::text").extract_first("")
-        if data:
-            data = json.loads(data)
-            name = data.get("name", name)
-            rating = data.get("rating", rating)
-            image_new_id = data.get("image_path")
-            if image_new_id:
-                image_new_id = image_new_id.split("/")[-1].split(".")[0]
-                image_id = image_new_id
-            item_id = data.get("item_id", item_id)
+        d = None
+        if response.css('#uuid ::text').get() is None:
+            d = json.loads(response.css('#item-data-json::text').extract_first())
+
+            item_id = d['item_id']
+            name = d['name']
+
+            if image_id is None:
+                if 'image_path' in d:
+                    image_id = d['image_path']
+                    image_id = image_id.split('/')[-1].split('.')[0]
 
         item = {
             "item_id": item_id,
@@ -72,11 +75,28 @@ class ZbotSpider(scrapy.Spider):
             "phone": phone_code.strip() or "",
         }
 
-        if "NO RATING" in rating or not rating.strip():
-            rating_url = response.xpath("//p[text()[contains(., 'Rating')]] /span").css(
-                "::attr(data-price-url)").extract_first("")
-            meta = {"item": item}
-            yield scrapy.Request(response.urljoin(rating_url), callback=self.parse_rating, meta=meta)
+        rating = response.css('#item-data p:contains("Rating") span ::attr("data-price-url")').extract_first()
+        if rating is not None:
+            if rating[0] == '/':
+                rating = response.urljoin(rating)
+            yield scrapy.Request(url=rating,
+                                 callback=self.parse_rating,
+                                 errback=self.parse_rating_error,
+                                 dont_filter=True,
+                                 meta={'item': item})
+        elif d is not None:
+            if d.get('data_url') is not None:
+                rating = response.urljoin(d['data_url'])
+                yield scrapy.Request(url=rating,
+                                     callback=self.parse_rating,
+                                     errback=self.parse_rating_error,
+                                     dont_filter=True,
+                                     meta={'item': item})
+            elif 'rating' in d:
+                item['rating'] = d['rating']
+                yield item
+            else:
+                yield item
 
         else:
             yield item
@@ -86,4 +106,8 @@ class ZbotSpider(scrapy.Spider):
         rating = json.loads(response.body.decode("utf-8"))
         item["rating"] = rating.get("value", "").strip()
 
+        yield item
+
+    def parse_rating_error(self, response):
+        item = response.meta.get('item')
         yield item
