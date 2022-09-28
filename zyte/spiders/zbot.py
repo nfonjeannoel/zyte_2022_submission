@@ -35,7 +35,6 @@ class ZbotSpider(scrapy.Spider):
         for link in recommended_links:
             yield scrapy.Request(response.urljoin(link), callback=self.parse_product)
 
-
         item_id = response.css("#uuid::text").extract_first("").strip()
         name = response.css(".heading-colored::text").extract_first("").strip()
         image_id = response.css(".img-shadow img::attr(src)").re_first(r"gen/(.*)\.")
@@ -72,8 +71,7 @@ class ZbotSpider(scrapy.Spider):
             "phone": phone_code.strip() or "",
         }
 
-
-        if rating == 'NO RATING':
+        if not rating or "NO RATING" in rating.upper():
             rating_url = response.xpath("//p[text()[contains(., 'Rating')]] /span").css(
                 "::attr(data-price-url)").extract_first("")
             meta = {"item": item}
@@ -86,4 +84,5 @@ class ZbotSpider(scrapy.Spider):
         item = copy.deepcopy(response.meta["item"])
         rating = json.loads(response.body.decode("utf-8"))
         item["rating"] = rating.get("value", "").strip()
+
         yield item
