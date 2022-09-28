@@ -14,17 +14,27 @@ class ZbotSpider(scrapy.Spider):
         yield scrapy.Request(response.urljoin(products), callback=self.parse_products)
 
     def parse_products(self, response):
-        products = response.css(".gtco-copy > a::attr(href)").extract()
+        if not response.meta.get("seen"):
+            sorting = response.css("a[href*='sort_by=alphabetically']::attr(href)").extract_first("")
+            yield scrapy.Request(response.urljoin(sorting), callback=self.parse_products, meta={"seen": True})
+        products = response.css(".gtco-practice-area-item .gtco-copy a::attr(href)").extract()
+        # links = response.css("a::attr(href)").extract()
+        # if len(links) != 22:
+        #     yield {"url": response.url, "links": links}
+        # self.log("url {} has {} products".format(response.url, len(links)))
         for product in products:
             yield scrapy.Request(response.urljoin(product), callback=self.parse_product)
 
-        next_page = response.xpath("//a[text()[contains(., 'Next Page')]]").css("::attr(href)").extract_first()
+        next_page = response.xpath("//a[text()[contains(., 'Next Page')]]").css("::attr(href)").extract()
         if next_page:
-            yield scrapy.Request(url=response.urljoin(next_page), callback=self.parse_products)
+            for page in next_page:
+                yield scrapy.Request(url=response.urljoin(page), callback=self.parse_products)
 
     def parse_product(self, response):
-        recommended_links = response.css(".team-item a")
-        yield from response.follow_all(recommended_links, self.parse_product)
+        recommended_links = response.css(".team-item a::attr(href)").extract()
+        for link in recommended_links:
+            yield scrapy.Request(response.urljoin(link), callback=self.parse_product)
+
 
         item_id = response.css("#uuid::text").extract_first("").strip()
         name = response.css(".heading-colored::text").extract_first("").strip()
@@ -61,6 +71,7 @@ class ZbotSpider(scrapy.Spider):
             "rating": rating,
             "phone": phone_code.strip() or "",
         }
+
 
         if rating == 'NO RATING':
             rating_url = response.xpath("//p[text()[contains(., 'Rating')]] /span").css(
