@@ -71,6 +71,11 @@ class ZbotSpider(scrapy.Spider):
             "phone": phone_code.strip() or "",
         }
 
+        if not rating.strip():
+            item['rating'] = item_id
+            yield item
+            return
+
         if "NO RATING" in rating:
             rating_url = response.xpath("//p[text()[contains(., 'Rating')]] /span").css(
                 "::attr(data-price-url)").extract_first("")
