@@ -36,7 +36,7 @@ class ZbotSpider(scrapy.Spider):
             yield scrapy.Request(response.urljoin(link), callback=self.parse_product)
 
         item_id = response.css("#uuid::text").extract_first("").strip()
-        name = response.css(".heading-colored::text").extract_first("").strip()
+        name = response.css("h2.heading-colored::text").extract_first("").strip()
         image_id_css = ".img-shadow ::attr(src)"
         image_id_pattern = r"/([\da-f-]+)\.jpg"
         image_id = response.css(image_id_css).re_first(image_id_pattern)
@@ -45,7 +45,6 @@ class ZbotSpider(scrapy.Spider):
             image_id = response.xpath(script_xpath).re_first(image_id_pattern)
         if not image_id:
             image_id = None
-
 
         rating = response.xpath("//p[text()[contains(., 'Rating')]] /span//text()").extract_first("").strip()
         p = r"from((.*));"
@@ -73,12 +72,7 @@ class ZbotSpider(scrapy.Spider):
             "phone": phone_code.strip() or "",
         }
 
-        if not rating.strip():
-            item['rating'] = item_id
-            yield item
-            return
-
-        if "NO RATING" in rating:
+        if "NO RATING" in rating or not rating.strip():
             rating_url = response.xpath("//p[text()[contains(., 'Rating')]] /span").css(
                 "::attr(data-price-url)").extract_first("")
             meta = {"item": item}
